@@ -66,6 +66,10 @@ export class GoogleNestThermostat {
     this.service = this.accessory.getService(this.platform.Service.Thermostat)
       || this.accessory.addService(this.platform.Service.Thermostat);
 
+    this.service.getCharacteristic(C.TargetHeatingCoolingState).setProps({validValues: [
+      C.TargetHeatingCoolingState.OFF, C.TargetHeatingCoolingState.HEAT,
+      C.TargetHeatingCoolingState.COOL, C.TargetHeatingCoolingState.AUTO]});
+
     // create handlers for required characteristics
     this.service.getCharacteristic(C.CurrentHeatingCoolingState)
       .onGet(this.handleCurrentHeatingCoolingStateGet.bind(this));
