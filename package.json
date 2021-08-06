@@ -1,16 +1,16 @@
 {
   "private": true,
-  "displayName": "Nest Selfhost",
-  "name": "homebridge-nest-selfhost",
+  "displayName": "Google Nest",
+  "name": "homebridge-nest-google",
   "version": "1.0.0",
   "description": "Selfhost a homebridge hub for Google Nest Thermostats.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git://github.com/zhxchen17/homebridge-nest-selfhost.git"
+    "url": "git://github.com/zhxchen17/homebridge-nest-google.git"
   },
   "bugs": {
-    "url": "https://github.com/zhxchen17/homebridge-nest-selfhost/issues"
+    "url": "https://github.com/zhxchen17/homebridge-nest-google/issues"
   },
   "engines": {
     "node": ">=10.17.0",
@@ -26,7 +26,11 @@
   "keywords": [
     "homebridge-plugin"
   ],
-  "dependencies": {},
+  "dependencies": {
+    "async-mutex": "^0.3.1",
+    "googleapis": "^82.0.0",
+    "homebridge-config-ui-x": "^4.41.1"
+  },
   "devDependencies": {
     "@types/node": "^14.14.31",
     "@typescript-eslint/eslint-plugin": "^4.16.1",

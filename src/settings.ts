@@ -6,4 +6,4 @@ export const PLATFORM_NAME = 'GoogleNest';
 /**
  * This must match the name of your plugin as defined the package.json
  */
-export const PLUGIN_NAME = 'homebridge-nest-selfhost';
+export const PLUGIN_NAME = 'homebridge-nest-google';

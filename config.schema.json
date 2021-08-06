@@ -2,14 +2,30 @@
   "pluginAlias": "GoogleNest",
   "pluginType": "platform",
   "singular": true,
+  "headerDisplay": "Please follow https://developers.google.com/nest/device-access/registration to get developer tokens.",
   "schema": {
     "type": "object",
     "properties": {
-      "name": {
-        "title": "Name",
+      "projectId": {
+        "title": "Project Id",
+        "type": "string",
+        "required": true
+      },
+      "clientId": {
+        "title": "Client Id",
         "type": "string",
         "required": true,
-        "default": "Example Dynamic Platform"
+        "pattern": ".apps.googleusercontent.com$"
+      },
+      "clientSecret": {
+        "title": "Client Secrect",
+        "type": "string",
+        "required": true
+      },
+      "refreshToken": {
+        "title": "Refresh Token",
+        "type": "string",
+        "required": true
       }
     }
   }

@@ -1,7 +1,7 @@
-import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, Characteristic } from 'homebridge';
-
+import { API, DynamicPlatformPlugin, Logging, PlatformAccessory, PlatformConfig, Service, Characteristic } from 'homebridge';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
-import { GoogleNestThermostats } from './platformAccessory';
+import { GoogleNestThermostat } from './platformAccessory';
+import { google, smartdevicemanagement_v1 } from 'googleapis';
 
 /**
  * HomebridgePlatform
@@ -15,12 +15,22 @@ export class GoogleNestPlatform implements DynamicPlatformPlugin {
   // this is used to track restored cached accessories
   public readonly accessories: PlatformAccessory[] = [];
 
+  private cached = false;
+
   constructor(
-    public readonly log: Logger,
+    public readonly log: Logging,
     public readonly config: PlatformConfig,
     public readonly api: API,
   ) {
-    this.log.debug('Finished initializing platform:', this.config.name);
+    this.log.debug('Finished initializing platform.');
+
+    const auth = new google.auth.OAuth2(this.config.clientId, this.config.clientSecret);
+
+    auth.setCredentials({
+      refresh_token: this.config.refreshToken,
+    });
+
+    google.options({ auth });
 
     // When this event is fired it means Homebridge has restored all cached accessories from disk.
     // Dynamic Platform plugins should only register new accessories after this event was fired,
@@ -42,6 +52,55 @@ export class GoogleNestPlatform implements DynamicPlatformPlugin {
 
     // add the restored accessory to the accessories cache so we can track if it has already been registered
     this.accessories.push(accessory);
+    this.cached = true;
+  }
+
+  discoverDevice(
+    device: smartdevicemanagement_v1.Schema$GoogleHomeEnterpriseSdmV1Device,
+    gapi: smartdevicemanagement_v1.Smartdevicemanagement,
+  ) {
+    if (typeof device.name !== 'string') {
+      return;
+    }
+
+    const uuid = this.api.hap.uuid.generate(device.name);
+    const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
+
+    if (existingAccessory) {
+      // the accessory already exists
+      this.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
+
+      // if you need to update the accessory.context then you should run `api.updatePlatformAccessories`. eg.:
+      // existingAccessory.context.device = device;
+      // this.api.updatePlatformAccessories([existingAccessory]);
+
+      // create the accessory handler for the restored accessory
+      // this is imported from `platformAccessory.ts`
+      new GoogleNestThermostat(this, existingAccessory, gapi);
+      return;
+    }
+
+    // the accessory does not yet exist, so we need to create it
+    let [{ displayName }] = device.parentRelations ?? [];
+    if (!displayName) {
+      displayName = 'Device ' + device.name.slice(-6);
+    }
+    this.log.info('Adding new accessory:', displayName);
+
+    // create a new accessory
+    const accessory = new this.api.platformAccessory(displayName, uuid);
+
+    // store a copy of the device object in the `accessory.context`
+    // the `context` property can be used to store any data about the accessory you may need
+    accessory.context.displayName = displayName;
+    accessory.context.name = device.name;
+
+    // create the accessory handler for the newly create accessory
+    // this is imported from `platformAccessory.ts`
+    new GoogleNestThermostat(this, accessory, gapi);
+
+    // link the accessory to your platform
+    this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
   }
 
   /**
@@ -50,67 +109,31 @@ export class GoogleNestPlatform implements DynamicPlatformPlugin {
    * must not be registered again to prevent "duplicate UUID" errors.
    */
   discoverDevices() {
-
-    // EXAMPLE ONLY
-    // A real plugin you would discover accessories from the local network, cloud services
-    // or a user-defined array in the platform config.
-    const exampleDevices = [
-      {
-        exampleUniqueId: 'ABCD',
-        exampleDisplayName: 'Bedroom',
-      },
-      {
-        exampleUniqueId: 'EFGH',
-        exampleDisplayName: 'Kitchen',
-      },
-    ];
-
-    // loop over the discovered devices and register each one if it has not already been registered
-    for (const device of exampleDevices) {
-
-      // generate a unique id for the accessory this should be generated from
-      // something globally unique, but constant, for example, the device serial
-      // number or MAC address
-      const uuid = this.api.hap.uuid.generate(device.exampleUniqueId);
-
-      // see if an accessory with the same uuid has already been registered and restored from
-      // the cached devices we stored in the `configureAccessory` method above
-      const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
-
-      if (existingAccessory) {
-        // the accessory already exists
-        this.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
-
-        // if you need to update the accessory.context then you should run `api.updatePlatformAccessories`. eg.:
-        // existingAccessory.context.device = device;
-        // this.api.updatePlatformAccessories([existingAccessory]);
-
-        // create the accessory handler for the restored accessory
-        // this is imported from `platformAccessory.ts`
-        new GoogleNestThermostats(this, existingAccessory);
-
-        // it is possible to remove platform accessories at any time using `api.unregisterPlatformAccessories`, eg.:
-        // remove platform accessories when no longer present
-        // this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
-        // this.log.info('Removing existing accessory from cache:', existingAccessory.displayName);
-      } else {
-        // the accessory does not yet exist, so we need to create it
-        this.log.info('Adding new accessory:', device.exampleDisplayName);
-
-        // create a new accessory
-        const accessory = new this.api.platformAccessory(device.exampleDisplayName, uuid);
-
-        // store a copy of the device object in the `accessory.context`
-        // the `context` property can be used to store any data about the accessory you may need
-        accessory.context.device = device;
-
-        // create the accessory handler for the newly create accessory
-        // this is imported from `platformAccessory.ts`
-        new GoogleNestThermostats(this, accessory);
-
-        // link the accessory to your platform
-        this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+    const sdm = google.smartdevicemanagement({
+      'version': 'v1',
+    });
+    this.log.info('Discovering GoogleNest devices.');
+    sdm.enterprises.devices.list({
+      parent: 'enterprises/' + this.config.projectId,
+    }).then(res => {
+      if (res.data.nextPageToken !== undefined) {
+        this.log.error('[discoverDevices] Ignored next page token.');
       }
-    }
+
+      if (this.cached) {
+        for (const accessory of this.accessories) {
+          if (!res.data.devices?.map(d => d.name).includes(accessory.context.name)) {
+            this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+            this.log.info('Removing existing accessory from cache:', accessory.displayName);
+          }
+        }
+      } else {
+        this.log.error('discoverDevices() runs before configAccessory().');
+      }
+
+      for (const device of res.data.devices ?? []) {
+        this.discoverDevice(device, sdm);
+      }
+    });
   }
 }
