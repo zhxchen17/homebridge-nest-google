@@ -127,8 +127,6 @@ export class GoogleNestPlatform implements DynamicPlatformPlugin {
             this.log.info('Removing existing accessory from cache:', accessory.displayName);
           }
         }
-      } else {
-        this.log.error('discoverDevices() runs before configAccessory().');
       }
 
       for (const device of res.data.devices ?? []) {
