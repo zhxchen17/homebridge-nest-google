@@ -27,10 +27,6 @@ class Timeout {
 const MAX_COOL_TEMP = 35;
 const MIN_HEAT_TEMP = 0;
 
-const wrapTemp = (temp: number) => {
-  return Math.round(temp * 10) / 10;
-};
-
 /**
  * Platform Accessory
  * An instance of this class is created for each accessory your platform registers
@@ -42,6 +38,8 @@ export class GoogleNestThermostat {
   private log: Logging;
   private timeout = new Timeout();
   private fetchMutex = new Mutex();
+
+
 
   /**
    * These are just used to create a working example
@@ -293,7 +291,7 @@ export class GoogleNestThermostat {
 
   async handleCurrentTemperatureGet(): Promise<CharacteristicValue> {
     await this.fetchStates();
-    return wrapTemp(this.getCurrentTemperature());
+    return this.getCurrentTemperature();
   }
 
   async handleTargetTemperatureGet(): Promise<CharacteristicValue> {
@@ -302,7 +300,7 @@ export class GoogleNestThermostat {
     const status = this.getHvacStatus();
     const temp = this.getCurrentTemperature();
     if (status === 'OFF') {
-      return wrapTemp(temp);
+      return temp;
     }
 
     const setpoint = this.getTemperatureSetpoint();
@@ -315,11 +313,11 @@ export class GoogleNestThermostat {
     }
 
     if (heat && !cool) {
-      return wrapTemp(heat);
+      return heat;
     } else if (!heat && cool) {
-      return wrapTemp(cool);
+      return cool;
     } else {
-      return wrapTemp(Math.abs(temp - heat!) < Math.abs(temp - cool!) ? heat! : cool!);
+      return Math.abs(temp - heat!) < Math.abs(temp - cool!) ? heat! : cool!;
     }
   }
 
@@ -347,7 +345,7 @@ export class GoogleNestThermostat {
   async handleCoolingThresholdTemperatureGet(): Promise<CharacteristicValue> {
     await this.fetchStates();
 
-    return wrapTemp(this.getTemperatureSetpoint().coolCelsius ?? MAX_COOL_TEMP);
+    return this.getTemperatureSetpoint().coolCelsius ?? MAX_COOL_TEMP;
   }
 
   async handleCoolingThresholdTemperatureSet(value: CharacteristicValue) {
@@ -377,7 +375,7 @@ export class GoogleNestThermostat {
   async handleHeatingThresholdTemperatureGet(): Promise<CharacteristicValue> {
     await this.fetchStates();
 
-    return wrapTemp(this.getTemperatureSetpoint().heatCelsius ?? MIN_HEAT_TEMP);
+    return this.getTemperatureSetpoint().heatCelsius ?? MIN_HEAT_TEMP;
   }
 
   async handleHeatingThresholdTemperatureSet(value: CharacteristicValue) {
