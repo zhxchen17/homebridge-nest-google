@@ -24,6 +24,9 @@ class Timeout {
   }
 }
 
+const MAX_COOL_TEMP = 35;
+const MIN_HEAT_TEMP = 0;
+
 /**
  * Platform Accessory
  * An instance of this class is created for each accessory your platform registers
@@ -35,6 +38,8 @@ export class GoogleNestThermostat {
   private log: Logging;
   private timeout = new Timeout();
   private fetchMutex = new Mutex();
+
+
 
   /**
    * These are just used to create a working example
@@ -340,13 +345,7 @@ export class GoogleNestThermostat {
   async handleCoolingThresholdTemperatureGet(): Promise<CharacteristicValue> {
     await this.fetchStates();
 
-    const setpoint = this.getTemperatureSetpoint();
-
-    if (!setpoint.coolCelsius) {
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.RESOURCE_DOES_NOT_EXIST);
-    }
-
-    return setpoint.coolCelsius;
+    return this.getTemperatureSetpoint().coolCelsius ?? MAX_COOL_TEMP;
   }
 
   async handleCoolingThresholdTemperatureSet(value: CharacteristicValue) {
@@ -376,13 +375,7 @@ export class GoogleNestThermostat {
   async handleHeatingThresholdTemperatureGet(): Promise<CharacteristicValue> {
     await this.fetchStates();
 
-    const setpoint = this.getTemperatureSetpoint();
-
-    if (!setpoint.heatCelsius) {
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.RESOURCE_DOES_NOT_EXIST);
-    }
-
-    return setpoint.heatCelsius;
+    return this.getTemperatureSetpoint().heatCelsius ?? MIN_HEAT_TEMP;
   }
 
   async handleHeatingThresholdTemperatureSet(value: CharacteristicValue) {
