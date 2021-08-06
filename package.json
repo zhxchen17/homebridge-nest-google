@@ -1,5 +1,4 @@
 {
-  "private": true,
   "displayName": "Google Nest",
   "name": "homebridge-nest-google",
   "version": "1.0.0",
