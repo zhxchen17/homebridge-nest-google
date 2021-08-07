@@ -406,7 +406,7 @@ export class GoogleNestThermostat {
 
     this.log.debug('GET CoolingThresholdTemperature', setpoint);
     if (!setpoint.coolCelsius) {
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.RESOURCE_DOES_NOT_EXIST);
+      return setpoint.heatCelsius!;
     }
 
     return setpoint.coolCelsius;
@@ -444,7 +444,7 @@ export class GoogleNestThermostat {
 
     this.log.debug('GET HeatingThresholdTemperature', setpoint);
     if (!setpoint.heatCelsius) {
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.RESOURCE_DOES_NOT_EXIST);
+      return setpoint.coolCelsius!;
     }
 
     return setpoint.heatCelsius;
