@@ -358,12 +358,6 @@ export class GoogleNestThermostat {
   async handleTargetTemperatureGet(): Promise<CharacteristicValue> {
     await this.fetchState();
 
-    const status = this.getHvacStatus();
-    const temp = this.getCurrentTemperature();
-    if (status === 'OFF') {
-      return temp;
-    }
-
     const setpoint = this.getTemperatureSetpoint();
     const heat = setpoint['heatCelsius'];
     const cool = setpoint['coolCelsius'];
@@ -379,13 +373,13 @@ export class GoogleNestThermostat {
     } else if (!heat && cool) {
       return cool;
     } else {
-      return Math.abs(temp - heat!) < Math.abs(temp - cool!) ? heat! : cool!;
+      return this.getCurrentTemperature();
     }
   }
 
   async handleTargetTemperatureSet(value: CharacteristicValue) {
     this.log.info('Triggered SET TargetTemperature:', value);
-    // throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.READ_ONLY_CHARACTERISTIC);
+    throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.READ_ONLY_CHARACTERISTIC);
   }
 
   async handleTemperatureDisplayUnitsGet(): Promise<CharacteristicValue> {
