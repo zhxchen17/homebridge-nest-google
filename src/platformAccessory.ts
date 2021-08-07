@@ -116,6 +116,7 @@ export class GoogleNestThermostat {
   }
 
   private updateTempRanges(res: smartdevicemanagement_v1.Schema$GoogleHomeEnterpriseSdmV1Device) {
+    this.log.debug('udpateTempRanges');
     const tempStep = 0.1;
     const f2c = (temp: number) => {
       return (temp - 32) / 1.8;
@@ -154,7 +155,6 @@ export class GoogleNestThermostat {
   }
 
   async fetchState() {
-    this.log.debug('fetchState()');
     const release = await this.fetchMutex.acquire();
     try {
       if (this.state.data && Date.now() - this.state.timestamp <= this.timeout.get()) {
@@ -304,6 +304,7 @@ export class GoogleNestThermostat {
 
     const targetMode = this.getTargetMode();
 
+    this.log.debug('GET TargetHeatingCoolingState', targetMode);
     if (targetMode === 'HEAT') {
       return this.platform.Characteristic.TargetHeatingCoolingState.HEAT;
     } else if (targetMode === 'COOL') {
@@ -338,6 +339,7 @@ export class GoogleNestThermostat {
     };
 
     const mode = valueToMode(value);
+    this.log.debug('SET TargetHeatingCoolingState', mode);
     if (!this.getAvailableTargetModes().includes(mode)) {
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.INVALID_VALUE_IN_REQUEST);
     }
@@ -349,6 +351,7 @@ export class GoogleNestThermostat {
 
   async handleCurrentTemperatureGet(): Promise<CharacteristicValue> {
     await this.fetchState();
+    this.log.debug('GET CurrentTemperature', this.getCurrentTemperature());
     return this.getCurrentTemperature();
   }
 
@@ -365,6 +368,7 @@ export class GoogleNestThermostat {
     const heat = setpoint['heatCelsius'];
     const cool = setpoint['coolCelsius'];
 
+    this.log.debug('GET TargetTemperature', JSON.stringify(setpoint));
     if (!heat && !cool) {
       this.throwTraitError('handleTargetTemperatureGet failed to get heat or cool, state: ' + JSON.stringify(this.state),
         this.platform.api.hap.HAPStatus.RESOURCE_DOES_NOT_EXIST);
@@ -381,13 +385,14 @@ export class GoogleNestThermostat {
 
   async handleTargetTemperatureSet(value: CharacteristicValue) {
     this.log.info('Triggered SET TargetTemperature:', value);
-    throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.READ_ONLY_CHARACTERISTIC);
+    // throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.READ_ONLY_CHARACTERISTIC);
   }
 
   async handleTemperatureDisplayUnitsGet(): Promise<CharacteristicValue> {
     await this.fetchState();
 
     const displayUnit = this.getDisplayUnit();
+    this.log.debug('GET TemperatureDisplayUnit', displayUnit);
     if (displayUnit === 'FAHRENHEIT') {
       return this.platform.Characteristic.TemperatureDisplayUnits.FAHRENHEIT;
     } else {
@@ -405,6 +410,7 @@ export class GoogleNestThermostat {
 
     const setpoint = this.getTemperatureSetpoint();
 
+    this.log.debug('GET CoolingThresholdTemperature', setpoint);
     if (!setpoint.coolCelsius) {
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.RESOURCE_DOES_NOT_EXIST);
     }
@@ -413,6 +419,7 @@ export class GoogleNestThermostat {
   }
 
   async handleCoolingThresholdTemperatureSet(value: CharacteristicValue) {
+    this.log.info('Triggered SET CoolingThresholdTemperature:', value);
     await this.fetchState();
 
     if (this.getEcoMode() === 'MANUAL_ECO') {
@@ -441,6 +448,7 @@ export class GoogleNestThermostat {
 
     const setpoint = this.getTemperatureSetpoint();
 
+    this.log.debug('GET HeatingThresholdTemperature', setpoint);
     if (!setpoint.heatCelsius) {
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.RESOURCE_DOES_NOT_EXIST);
     }
@@ -449,6 +457,7 @@ export class GoogleNestThermostat {
   }
 
   async handleHeatingThresholdTemperatureSet(value: CharacteristicValue) {
+    this.log.info('Triggered SET HeatingThresholdTemperature:', value);
     await this.fetchState();
 
     if (this.getEcoMode() === 'MANUAL_ECO') {
@@ -474,10 +483,12 @@ export class GoogleNestThermostat {
 
   async handleEcoSwitchGet(): Promise<CharacteristicValue> {
     await this.fetchState();
+    this.log.debug('GET EcoSwitch', this.getEcoMode());
     return this.getEcoMode() === 'MANUAL_ECO';
   }
 
   async handleEcoSwitchSet(value: CharacteristicValue) {
+    this.log.info('Triggered SET EchoSwtich:', value);
     await this.executeCommand('sdm.devices.commands.ThermostatEco.SetMode', {
       mode: value ? 'MANUAL_ECO' : 'OFF',
     });
@@ -485,11 +496,12 @@ export class GoogleNestThermostat {
 
   async handleCurrentRelativeHumidityGet(): Promise<CharacteristicValue> {
     await this.fetchState();
-
+    this.log.debug('GET CurrentRelativeHumidity', this.getHumidity);
     return this.getHumidity();
   }
 
   async handleNameGet(): Promise<CharacteristicValue> {
+    this.log.debug('GET Name', 'Google Nest Thermostat');
     return 'Google Nest Thermostat';
   }
 }
