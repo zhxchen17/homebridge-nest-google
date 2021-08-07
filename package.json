@@ -1,7 +1,7 @@
 {
   "displayName": "Google Nest",
   "name": "homebridge-nest-google",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Selfhost a homebridge hub for Google Nest Thermostats.",
   "license": "Apache-2.0",
   "repository": {
