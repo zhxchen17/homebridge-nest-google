@@ -116,7 +116,7 @@ export class GoogleNestPlatform implements DynamicPlatformPlugin {
     sdm.enterprises.devices.list({
       parent: 'enterprises/' + this.config.projectId,
     }).then(res => {
-      if (res.data.nextPageToken !== undefined) {
+      if (res.data.nextPageToken) {
         this.log.error('[discoverDevices] Ignored next page token.');
       }
 

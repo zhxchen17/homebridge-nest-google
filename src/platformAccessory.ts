@@ -8,7 +8,7 @@ const seconds = (x: number) => {
 };
 
 class Timeout {
-  private cache = seconds(1);
+  private cache = seconds(5);
   private value = this.cache;
 
   reset() {
@@ -32,9 +32,10 @@ class Timeout {
 export class GoogleNestThermostat {
   private service: Service;
   private ecoService: Service;
-  private log: Logging;
   private timeout = new Timeout();
   private fetchMutex = new Mutex();
+  private log: Logging = this.platform.log;
+  private C = this.platform.Characteristic;
 
   /**
    * These are just used to create a working example
@@ -53,54 +54,59 @@ export class GoogleNestThermostat {
     private readonly accessory: PlatformAccessory,
     private readonly gapi: smartdevicemanagement_v1.Smartdevicemanagement,
   ) {
-    this.log = platform.log;
-
-    const C = this.platform.Characteristic;
     this.state.timestamp = Date.now();
     // set accessory information
     this.accessory.getService(this.platform.Service.AccessoryInformation)!
-      .setCharacteristic(C.Manufacturer, 'Google Nest')
-      .setCharacteristic(C.Model, 'Thermostat')
-      .setCharacteristic(C.SerialNumber, 'Unknown');
+      .setCharacteristic(this.C.Manufacturer, 'Google Nest')
+      .setCharacteristic(this.C.Model, 'Thermostat')
+      .setCharacteristic(this.C.SerialNumber, 'Unknown');
 
     this.service = this.accessory.getService(this.platform.Service.Thermostat)
       || this.accessory.addService(this.platform.Service.Thermostat);
 
-    this.service.getCharacteristic(C.TargetHeatingCoolingState).setProps({validValues: [
-      C.TargetHeatingCoolingState.OFF, C.TargetHeatingCoolingState.HEAT,
-      C.TargetHeatingCoolingState.COOL, C.TargetHeatingCoolingState.AUTO]});
+    this.service.getCharacteristic(this.C.TargetHeatingCoolingState).setProps({
+      validValues: [
+        this.C.TargetHeatingCoolingState.OFF, this.C.TargetHeatingCoolingState.HEAT,
+        this.C.TargetHeatingCoolingState.COOL, this.C.TargetHeatingCoolingState.AUTO],
+    });
 
     // create handlers for required characteristics
-    this.service.getCharacteristic(C.CurrentHeatingCoolingState)
+    this.service.getCharacteristic(this.C.CurrentHeatingCoolingState)
       .onGet(this.handleCurrentHeatingCoolingStateGet.bind(this));
 
-    this.service.getCharacteristic(C.TargetHeatingCoolingState)
+    this.service.getCharacteristic(this.C.TargetHeatingCoolingState)
       .onGet(this.handleTargetHeatingCoolingStateGet.bind(this))
       .onSet(this.handleTargetHeatingCoolingStateSet.bind(this));
 
-    this.service.getCharacteristic(C.CurrentTemperature)
+    this.service.getCharacteristic(this.C.CurrentTemperature)
       .onGet(this.handleCurrentTemperatureGet.bind(this));
 
-    this.service.getCharacteristic(C.TargetTemperature)
+    this.service.getCharacteristic(this.C.TargetTemperature)
       .onGet(this.handleTargetTemperatureGet.bind(this))
       .onSet(this.handleTargetTemperatureSet.bind(this));
 
-    this.service.getCharacteristic(C.TemperatureDisplayUnits)
+    this.service.getCharacteristic(this.C.TemperatureDisplayUnits)
       .onGet(this.handleTemperatureDisplayUnitsGet.bind(this))
       .onSet(this.handleTemperatureDisplayUnitsSet.bind(this));
 
-    this.service.getCharacteristic(C.CoolingThresholdTemperature)
+    this.service.getCharacteristic(this.C.CoolingThresholdTemperature)
       .onGet(this.handleCoolingThresholdTemperatureGet.bind(this))
       .onSet(this.handleCoolingThresholdTemperatureSet.bind(this));
 
-    this.service.getCharacteristic(C.HeatingThresholdTemperature)
+    this.service.getCharacteristic(this.C.HeatingThresholdTemperature)
       .onGet(this.handleHeatingThresholdTemperatureGet.bind(this))
       .onSet(this.handleHeatingThresholdTemperatureSet.bind(this));
+
+    this.service.getCharacteristic(this.C.CurrentRelativeHumidity)
+      .onGet(this.handleCurrentRelativeHumidityGet.bind(this));
+
+    this.service.getCharacteristic(this.C.Name)
+      .onGet(this.handleNameGet.bind(this));
 
     this.ecoService = this.accessory.getService('Eco Mode')
       || this.accessory.addService(this.platform.Service.Switch, 'Eco Mode', 'eco_mode_0');
 
-    this.ecoService.getCharacteristic(C.On)
+    this.ecoService.getCharacteristic(this.C.On)
       .onGet(this.handleEcoSwitchGet.bind(this))
       .onSet(this.handleEcoSwitchSet.bind(this));
   }
@@ -109,7 +115,46 @@ export class GoogleNestThermostat {
     return this.state.data?.traits?.['sdm.devices.traits.Connectivity']?.status === 'OFFLINE';
   }
 
-  async fetchStates() {
+  private updateTempRanges(res: smartdevicemanagement_v1.Schema$GoogleHomeEnterpriseSdmV1Device) {
+    const tempStep = 0.1;
+    const f2c = (temp: number) => {
+      return (temp - 32) / 1.8;
+    };
+    const [minSetTemp, maxSetTemp, minGetTemp, maxGetTemp] =
+      this.getDisplayUnit(res) === 'FAHRENHEIT' ? [f2c(50), f2c(90), f2c(0), f2c(160)] :
+        [10, 32, -20, 60];
+    this.service.getCharacteristic(this.C.CurrentTemperature).setProps({
+      minStep: tempStep,
+      minValue: minGetTemp,
+      maxValue: maxGetTemp,
+    });
+    this.service.getCharacteristic(this.C.TargetTemperature).setProps({
+      minStep: tempStep,
+      minValue: minSetTemp,
+      maxValue: maxSetTemp,
+    });
+    this.service.getCharacteristic(this.C.CoolingThresholdTemperature).setProps({
+      minStep: tempStep,
+      minValue: minSetTemp,
+      maxValue: maxSetTemp,
+    });
+    this.service.getCharacteristic(this.C.HeatingThresholdTemperature).setProps({
+      minStep: tempStep,
+      minValue: minSetTemp,
+      maxValue: maxSetTemp,
+    });
+  }
+
+  private commitState(res: smartdevicemanagement_v1.Schema$GoogleHomeEnterpriseSdmV1Device) {
+    if (!this.state.data || this.getDisplayUnit() !== this.getDisplayUnit(res)) {
+      this.updateTempRanges(res);
+    }
+    this.state.data = res;
+    this.state.timestamp = Date.now();
+  }
+
+  async fetchState() {
+    this.log.debug('fetchState()');
     const release = await this.fetchMutex.acquire();
     try {
       if (this.state.data && Date.now() - this.state.timestamp <= this.timeout.get()) {
@@ -122,8 +167,12 @@ export class GoogleNestThermostat {
       const res = await this.gapi.enterprises.devices.get({
         name: this.accessory.context.name,
       });
-      this.state.timestamp = Date.now();
-      this.state.data = res.data;
+
+      if (res.status === 200) {
+        this.commitState(res.data);
+      } else {
+        this.log.error('fetchState() failed, response:', JSON.stringify(res));
+      }
     } finally {
       release();
     }
@@ -193,8 +242,8 @@ export class GoogleNestThermostat {
     return target.availableModes;
   }
 
-  private getDisplayUnit(): 'FAHRENHEIT' | 'CELSIUS' {
-    const unit = this.state.data?.traits?.['sdm.devices.traits.Settings']?.['temperatureScale'];
+  private getDisplayUnit(data = this.state.data): 'FAHRENHEIT' | 'CELSIUS' {
+    const unit = data?.traits?.['sdm.devices.traits.Settings']?.['temperatureScale'];
     if (!unit) {
       this.throwTraitError('getDisplayUnit() failed, state: ' + JSON.stringify(this.state),
         this.platform.api.hap.HAPStatus.RESOURCE_DOES_NOT_EXIST);
@@ -213,6 +262,16 @@ export class GoogleNestThermostat {
     return setpoint;
   }
 
+  private getHumidity(): number {
+    const humidity = this.state.data?.traits?.['sdm.devices.traits.Humidity'];
+    if (!humidity) {
+      this.throwTraitError('getHumidity failed to get setpoint, state: ' + JSON.stringify(this.state),
+        this.platform.api.hap.HAPStatus.RESOURCE_DOES_NOT_EXIST);
+    }
+
+    return humidity.ambientHumidityPercent!;
+  }
+
   private async executeCommand(command: string, params) {
     const res = await this.gapi.enterprises.devices.executeCommand({
       name: this.accessory.context.name,
@@ -228,7 +287,7 @@ export class GoogleNestThermostat {
   }
 
   async handleCurrentHeatingCoolingStateGet(): Promise<CharacteristicValue> {
-    await this.fetchStates();
+    await this.fetchState();
 
     const status = this.getHvacStatus();
     if (status === 'HEATING') {
@@ -241,7 +300,7 @@ export class GoogleNestThermostat {
   }
 
   async handleTargetHeatingCoolingStateGet(): Promise<CharacteristicValue> {
-    await this.fetchStates();
+    await this.fetchState();
 
     const targetMode = this.getTargetMode();
 
@@ -259,7 +318,7 @@ export class GoogleNestThermostat {
   async handleTargetHeatingCoolingStateSet(value: CharacteristicValue) {
     this.log.info('Triggered SET TargetHeatingCoolingState:', value);
 
-    await this.fetchStates();
+    await this.fetchState();
 
     if (this.getEcoMode() === 'MANUAL_ECO') {
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.NOT_ALLOWED_IN_CURRENT_STATE);
@@ -289,12 +348,12 @@ export class GoogleNestThermostat {
   }
 
   async handleCurrentTemperatureGet(): Promise<CharacteristicValue> {
-    await this.fetchStates();
+    await this.fetchState();
     return this.getCurrentTemperature();
   }
 
   async handleTargetTemperatureGet(): Promise<CharacteristicValue> {
-    await this.fetchStates();
+    await this.fetchState();
 
     const status = this.getHvacStatus();
     const temp = this.getCurrentTemperature();
@@ -326,7 +385,7 @@ export class GoogleNestThermostat {
   }
 
   async handleTemperatureDisplayUnitsGet(): Promise<CharacteristicValue> {
-    await this.fetchStates();
+    await this.fetchState();
 
     const displayUnit = this.getDisplayUnit();
     if (displayUnit === 'FAHRENHEIT') {
@@ -342,7 +401,7 @@ export class GoogleNestThermostat {
   }
 
   async handleCoolingThresholdTemperatureGet(): Promise<CharacteristicValue> {
-    await this.fetchStates();
+    await this.fetchState();
 
     const setpoint = this.getTemperatureSetpoint();
 
@@ -354,7 +413,7 @@ export class GoogleNestThermostat {
   }
 
   async handleCoolingThresholdTemperatureSet(value: CharacteristicValue) {
-    await this.fetchStates();
+    await this.fetchState();
 
     if (this.getEcoMode() === 'MANUAL_ECO') {
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.NOT_ALLOWED_IN_CURRENT_STATE);
@@ -378,7 +437,7 @@ export class GoogleNestThermostat {
   }
 
   async handleHeatingThresholdTemperatureGet(): Promise<CharacteristicValue> {
-    await this.fetchStates();
+    await this.fetchState();
 
     const setpoint = this.getTemperatureSetpoint();
 
@@ -390,7 +449,7 @@ export class GoogleNestThermostat {
   }
 
   async handleHeatingThresholdTemperatureSet(value: CharacteristicValue) {
-    await this.fetchStates();
+    await this.fetchState();
 
     if (this.getEcoMode() === 'MANUAL_ECO') {
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.NOT_ALLOWED_IN_CURRENT_STATE);
@@ -414,7 +473,7 @@ export class GoogleNestThermostat {
   }
 
   async handleEcoSwitchGet(): Promise<CharacteristicValue> {
-    await this.fetchStates();
+    await this.fetchState();
     return this.getEcoMode() === 'MANUAL_ECO';
   }
 
@@ -422,5 +481,15 @@ export class GoogleNestThermostat {
     await this.executeCommand('sdm.devices.commands.ThermostatEco.SetMode', {
       mode: value ? 'MANUAL_ECO' : 'OFF',
     });
+  }
+
+  async handleCurrentRelativeHumidityGet(): Promise<CharacteristicValue> {
+    await this.fetchState();
+
+    return this.getHumidity();
+  }
+
+  async handleNameGet(): Promise<CharacteristicValue> {
+    return 'Google Nest Thermostat';
   }
 }
