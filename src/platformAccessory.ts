@@ -196,7 +196,18 @@ export class GoogleNestThermostatHandler {
 
   async handleTargetTemperatureSet(value: CharacteristicValue) {
     this.log.info('Triggered SET TargetTemperature:', value);
-    throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.READ_ONLY_CHARACTERISTIC);
+    const characteristics = await this.api.fetch();
+
+    switch (characteristics.getTargetMode()) {
+      case 'HEAT':
+        await this.handleHeatingThresholdTemperatureSet(value);
+        return;
+      case 'COOL':
+        await this.handleCoolingThresholdTemperatureSet(value);
+        return;
+      default:
+        throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.NOT_ALLOWED_IN_CURRENT_STATE);
+    }
   }
 
   async handleTemperatureDisplayUnitsGet(): Promise<CharacteristicValue> {
