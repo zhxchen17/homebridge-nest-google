@@ -8,23 +8,6 @@ const seconds = (x: number) => {
   return x * 1000;
 };
 
-class Timeout {
-  private cache = seconds(5);
-  private value = this.cache;
-
-  reset() {
-    this.value = this.cache;
-  }
-
-  offline() {
-    this.value = seconds(30);
-  }
-
-  get() {
-    return this.value;
-  }
-}
-
 export interface GoogleNestThermostatUpdateHandler {
   onDisplayUnit(unit: 'FAHRENHEIT' | 'CELSIUS'): void;
 }
@@ -52,51 +35,78 @@ const deviceToTraits = (device: smartdevicemanagement_v1.Schema$GoogleHomeEnterp
   };
 };
 
-type Traits = ReturnType<typeof deviceToTraits>;
+type DeviceTraits = ReturnType<typeof deviceToTraits>;
+
+class Cache {
+  private traits?: DeviceTraits;
+  private characrestics?: GoogleNestThermostatCharacteristics;
+
+  private timestamp: number = Date.now();
+  private timeout = seconds(5);
+
+  constructor(
+    private readonly error: () => never,
+  ) {}
+
+  getTraits() {
+    return this.traits;
+  }
+
+  getCharacrestics(): GoogleNestThermostatCharacteristics {
+    if (!this.characrestics) {
+      this.error();
+    }
+
+    return this.characrestics;
+  }
+
+  set(traits: DeviceTraits, characteristics?: GoogleNestThermostatCharacteristics) {
+    this.traits = traits;
+    this.characrestics = characteristics;
+    this.timestamp = Date.now();
+  }
+
+  isAlive(): boolean {
+    return this.traits !== null && (Date.now() - this.timestamp) <= this.timeout;
+  }
+}
 
 export class GoogleNestThermostatApi {
   private log: Logging = this.platform.log;
-  private timeout = new Timeout();
   private fetchMutex = withTimeout(new Mutex(), 500,
     new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.RESOURCE_BUSY));
 
-  private cache: {
-    traits: Traits | null;
-    characrestics: GoogleNestThermostatCharacteristics | null;
-    timestamp: number;
-  } = {
-    traits: null,
-    characrestics: null,
-    timestamp: Date.now(),
-  };
+  private cache = new Cache(() => {
+    throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+  });
 
   constructor(
     private readonly platform: GoogleNestPlatform,
     private readonly accessory: PlatformAccessory,
     private readonly gapi: smartdevicemanagement_v1.Smartdevicemanagement,
     private readonly updateHandler: GoogleNestThermostatUpdateHandler,
-  ) { }
+  ) {}
 
-  private save(traits: Traits) {
-    if (this.cache.traits?.displayUnit !== traits.displayUnit && traits.displayUnit) {
+  private save(traits: DeviceTraits) {
+    if (this.cache.getTraits()?.displayUnit !== traits.displayUnit && traits.displayUnit) {
       this.updateHandler.onDisplayUnit(traits.displayUnit);
     }
-    this.cache.traits = traits;
-    this.cache.characrestics = new GoogleNestThermostatCharacteristics(this.cache.traits, (msg: string) => {
-      this.log.error(msg);
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.RESOURCE_DOES_NOT_EXIST);
-    });
-    this.cache.timestamp = Date.now();
+
+    if (traits.connectivity === 'OFFLINE') {
+      this.cache.set(traits);
+    } else {
+      this.cache.set(traits, new GoogleNestThermostatCharacteristics(traits, (msg: string) => {
+        this.log.error(msg);
+        throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.RESOURCE_DOES_NOT_EXIST);
+      }));
+    }
   }
 
   async fetch(): Promise<GoogleNestThermostatCharacteristics> {
     const release = await this.fetchMutex.acquire();
     try {
-      if (this.cache.traits && Date.now() - this.cache.timestamp <= this.timeout.get()) {
-        if (this.cache.traits?.connectivity === 'OFFLINE') {
-          throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-        }
-        return this.cache.characrestics!;
+      if (this.cache.isAlive()) {
+        return this.cache.getCharacrestics();
       }
 
       const res = await this.gapi.enterprises.devices.get({
@@ -107,7 +117,7 @@ export class GoogleNestThermostatApi {
         this.save(deviceToTraits(res.data));
       } else {
         this.log.error('fetchState() failed, response:', JSON.stringify(res));
-        if (!this.cache.traits) {
+        if (!this.cache.getTraits()) {
           throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
         }
       }
@@ -115,14 +125,7 @@ export class GoogleNestThermostatApi {
       release();
     }
 
-    if (this.cache.traits?.connectivity === 'OFFLINE') {
-      this.log.warn('Device is OFFLINE.');
-      this.timeout.offline();
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-    }
-
-    this.timeout.reset();
-    return this.cache.characrestics!;
+    return this.cache.getCharacrestics();
   }
 
   async executeCommand(command: string, params) {

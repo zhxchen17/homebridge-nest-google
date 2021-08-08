@@ -1,7 +1,7 @@
 /**
  * Internal data representation for device traits.
  */
-type Traits = {
+type DeviceTraits = {
   connectivity?: 'OFFLINE' | 'ONLINE';
   ecoMode?: 'MANUAL_ECO' | 'OFF';
   currentTemperature?: number;
@@ -18,9 +18,9 @@ type Traits = {
  */
 export class GoogleNestThermostatCharacteristics {
   constructor(
-    private readonly traits: Traits,
+    private readonly traits: DeviceTraits,
     private readonly error: (msg: string) => never,
-  ) { }
+  ) {}
 
   private get(name: string) {
     if (!this.traits[name]) {
