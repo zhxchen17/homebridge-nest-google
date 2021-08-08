@@ -1,6 +1,6 @@
 import { API, DynamicPlatformPlugin, Logging, PlatformAccessory, PlatformConfig, Service, Characteristic } from 'homebridge';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
-import { GoogleNestThermostat } from './platformAccessory';
+import { GoogleNestThermostatHandler } from './platformAccessory';
 import { google, smartdevicemanagement_v1 } from 'googleapis';
 
 /**
@@ -76,7 +76,7 @@ export class GoogleNestPlatform implements DynamicPlatformPlugin {
 
       // create the accessory handler for the restored accessory
       // this is imported from `platformAccessory.ts`
-      new GoogleNestThermostat(this, existingAccessory, gapi);
+      new GoogleNestThermostatHandler(this, existingAccessory, gapi);
       return;
     }
 
@@ -97,7 +97,7 @@ export class GoogleNestPlatform implements DynamicPlatformPlugin {
 
     // create the accessory handler for the newly create accessory
     // this is imported from `platformAccessory.ts`
-    new GoogleNestThermostat(this, accessory, gapi);
+    new GoogleNestThermostatHandler(this, accessory, gapi);
 
     // link the accessory to your platform
     this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
