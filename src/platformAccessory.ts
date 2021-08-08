@@ -220,7 +220,7 @@ export class GoogleNestThermostatHandler {
 
     const setpoint = characteristics.getTemperatureSetpoint();
     if (!setpoint.coolCelsius) {
-      return setpoint.heatCelsius!;
+      return setpoint.heatCelsius || characteristics.getCurrentTemperature();
     }
 
     return setpoint.coolCelsius;
@@ -256,7 +256,7 @@ export class GoogleNestThermostatHandler {
 
     const setpoint = characteristics.getTemperatureSetpoint();
     if (!setpoint.heatCelsius) {
-      return setpoint.coolCelsius!;
+      return setpoint.coolCelsius || characteristics.getCurrentTemperature();
     }
 
     return setpoint.heatCelsius;
